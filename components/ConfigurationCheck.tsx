@@ -109,7 +109,7 @@ export default function ConfigurationCheck({ isOpen, onClose }: ConfigurationChe
       description: 'For interactive map visualization',
       status: status?.environment.hasMapboxToken,
       required: false,
-      fix: 'Add MAPBOX_ACCESS_TOKEN to .env.local - see API_SETUP_GUIDE.md',
+      fix: 'Add NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN to .env.local - see API_SETUP_GUIDE.md',
       icon: Map
     },
     {
@@ -289,7 +289,7 @@ export default function ConfigurationCheck({ isOpen, onClose }: ConfigurationChe
               <h5 className="font-semibold text-secondary-900">Configuration</h5>
               <div className="bg-secondary-900 text-secondary-100 p-4 rounded-lg font-mono text-sm">
                 <div className="text-green-400"># Add to .env.local</div>
-                <div className="text-white">MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoieW91ci11c2VyIi...</div>
+                <div className="text-white">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoieW91ci11c2VyIi...</div>
               </div>
               <div className="bg-green-50 p-4 rounded-lg border border-green-200">
                 <div className="flex items-start space-x-2">

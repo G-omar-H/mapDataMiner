@@ -60,7 +60,7 @@ export default function LocationInput({ value, onChange, disabled, error }: Loca
 
     setIsLoadingSuggestions(true);
     try {
-      const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || process.env.MAPBOX_ACCESS_TOKEN;
+      const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
       if (!mapboxToken) {
         // Fallback to basic suggestions without API
         const basicSuggestions = generateBasicSuggestions(query);
@@ -146,7 +146,7 @@ export default function LocationInput({ value, onChange, disabled, error }: Loca
       
       // Try reverse geocoding
       try {
-        const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || process.env.MAPBOX_ACCESS_TOKEN;
+        const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
         if (mapboxToken) {
           const response = await fetch(
             `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${mapboxToken}`

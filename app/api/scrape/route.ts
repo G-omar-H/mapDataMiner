@@ -27,8 +27,8 @@ function validateEnvironment() {
   }
 
   // Check Mapbox for map visualization
-  if (!process.env.MAPBOX_ACCESS_TOKEN) {
-    warnings.push('MAPBOX_ACCESS_TOKEN is not configured - map visualization will be limited');
+  if (!process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN) {
+    warnings.push('NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN is not configured - map visualization will be limited');
   }
 
   // Check Google Sheets API for export functionality
@@ -410,7 +410,7 @@ export async function GET(request: NextRequest) {
         realScrapingEnabled: process.env.ENABLE_REAL_SCRAPING === 'true',
         googleSheetsEnabled: process.env.ENABLE_GOOGLE_SHEETS_EXPORT === 'true',
         hasGoogleMapsKey: !!process.env.GOOGLE_MAPS_API_KEY,
-        hasMapboxToken: !!process.env.MAPBOX_ACCESS_TOKEN,
+        hasMapboxToken: !!process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN,
         debugMode: process.env.DEBUG_MODE === 'true'
       },
       validation: {
