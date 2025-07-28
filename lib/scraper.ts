@@ -1,4 +1,6 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
+// @ts-ignore - @sparticuz/chromium doesn't have TypeScript definitions
+import chromium from '@sparticuz/chromium';
 import { BusinessData, SearchParams, ScrapingProgress } from '@/types';
 
 export class GoogleMapsScraper {
@@ -19,8 +21,15 @@ export class GoogleMapsScraper {
         this.page = null;
       }
 
-      this.browser = await puppeteer.launch({
+      // Configure for serverless environment (Vercel)
+      const isProduction = process.env.NODE_ENV === 'production';
+      const isDev = process.env.NODE_ENV === 'development';
+      
+      console.log(`🚀 Initializing browser for ${isProduction ? 'production' : 'development'} environment`);
+
+      let browserConfig: any = {
         headless: 'new',
+        timeout: 30000,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -31,11 +40,31 @@ export class GoogleMapsScraper {
           '--disable-extensions',
           '--disable-plugins',
           '--disable-images',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-ipc-flooding-protection',
           '--window-size=1920x1080',
           '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
-        ],
-        timeout: 30000
-      });
+        ]
+      };
+
+      if (isProduction) {
+        // Production configuration for Vercel
+        browserConfig.executablePath = await chromium.executablePath();
+        browserConfig.args = [
+          ...browserConfig.args,
+          ...chromium.args,
+          '--single-process',
+          '--no-zygote'
+        ];
+        console.log('✅ Using @sparticuz/chromium for production');
+      } else if (isDev) {
+        // Development configuration - use local Chrome
+        console.log('✅ Using local Chrome for development');
+      }
+
+      this.browser = await puppeteer.launch(browserConfig);
       
       this.page = await this.browser.newPage();
       
@@ -50,9 +79,9 @@ export class GoogleMapsScraper {
       // Test that the page is working
       await this.page.evaluate(() => document.readyState);
       
-      console.log('Browser initialized successfully');
+      console.log('✅ Browser initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize browser:', error);
+      console.error('❌ Failed to initialize browser:', error);
       await this.close();
       throw new Error(`Browser initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -83,9 +112,9 @@ export class GoogleMapsScraper {
     const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
 
     try {
-      console.log('Navigating to:', searchUrl);
+      console.log('🔍 Navigating to:', searchUrl);
       await this.page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-      await this.page.waitForTimeout(3000);
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
       // Wait for results to load - try multiple selectors
       const resultSelectors = [
@@ -101,10 +130,10 @@ export class GoogleMapsScraper {
         try {
           await this.page.waitForSelector(selector, { timeout: 5000 });
           resultsFound = true;
-          console.log(`Found results with selector: ${selector}`);
+          console.log(`✅ Found results with selector: ${selector}`);
           break;
         } catch (e) {
-          console.log(`Selector ${selector} not found, trying next...`);
+          console.log(`❌ Selector ${selector} not found, trying next...`);
         }
       }
 
@@ -124,9 +153,9 @@ export class GoogleMapsScraper {
           'a[data-value="Directions"]',
           (links) => links.map(link => link.getAttribute('href')).filter(Boolean) as string[]
         );
-        console.log(`Method 1 found ${businessLinks.length} businesses`);
+        console.log(`📍 Method 1 found ${businessLinks.length} businesses`);
       } catch (e) {
-        console.log('Method 1 failed, trying method 2...');
+        console.log('❌ Method 1 failed, trying method 2...');
       }
 
       // Method 2: Look for place links if method 1 failed
@@ -136,9 +165,9 @@ export class GoogleMapsScraper {
             'a[href*="/maps/place/"]',
             (links) => links.map(link => link.getAttribute('href')).filter(Boolean) as string[]
           );
-          console.log(`Method 2 found ${businessLinks.length} businesses`);
+          console.log(`📍 Method 2 found ${businessLinks.length} businesses`);
         } catch (e) {
-          console.log('Method 2 failed, trying method 3...');
+          console.log('❌ Method 2 failed, trying method 3...');
         }
       }
 
@@ -157,35 +186,39 @@ export class GoogleMapsScraper {
               }).filter(Boolean) as string[];
             }
           );
-          console.log(`Method 3 found ${businessLinks.length} businesses`);
+          console.log(`📍 Method 3 found ${businessLinks.length} businesses`);
         } catch (e) {
-          console.log('Method 3 failed');
+          console.log('❌ Method 3 failed');
         }
       }
 
       if (businessLinks.length === 0) {
-        // Return mock data if scraping fails
-        console.log('No businesses found, returning mock data for testing...');
-        
-        const fallbackCategory = params.categories && params.categories.length > 0 
-          ? params.categories[0] 
-          : 'Business';
-        
-        return [
-          {
-            id: `fallback_${Date.now()}_1`,
-            name: `${fallbackCategory} in ${params.location}`,
-            address: `Sample address in ${params.location}`,
-            phone: '+1 (555) 123-4567',
-            website: 'https://example.com',
-            rating: 4.0 + Math.random(),
-            reviewCount: Math.floor(Math.random() * 200) + 10,
-            category: fallbackCategory,
-            hours: 'Mon-Fri: 9:00 AM - 6:00 PM',
-            coordinates: { lat: 40.7128 + (Math.random() - 0.5) * 0.01, lng: -74.0060 + (Math.random() - 0.5) * 0.01 },
-            scrapedAt: new Date()
-          }
-        ];
+        // Return mock data if scraping fails (for development only)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('⚠️ No businesses found, returning mock data for development...');
+          
+          const fallbackCategory = params.categories && params.categories.length > 0 
+            ? params.categories[0] 
+            : 'Business';
+          
+          return [
+            {
+              id: `fallback_${Date.now()}_1`,
+              name: `${fallbackCategory} in ${params.location}`,
+              address: `Sample address in ${params.location}`,
+              phone: '+1 (555) 123-4567',
+              website: 'https://example.com',
+              rating: 4.0 + Math.random(),
+              reviewCount: Math.floor(Math.random() * 200) + 10,
+              category: fallbackCategory,
+              hours: 'Mon-Fri: 9:00 AM - 6:00 PM',
+              coordinates: { lat: 40.7128 + (Math.random() - 0.5) * 0.01, lng: -74.0060 + (Math.random() - 0.5) * 0.01 },
+              scrapedAt: new Date()
+            }
+          ];
+        } else {
+          throw new Error('No businesses found for the specified search criteria');
+        }
       }
 
       this.updateProgress({
@@ -201,7 +234,7 @@ export class GoogleMapsScraper {
       const maxBusinesses = parseInt(process.env.MAX_BUSINESSES_PER_SEARCH || '500');
       const linksToProcess = businessLinks.slice(0, maxBusinesses);
       
-      console.log(`Starting to scrape ${linksToProcess.length} businesses (found ${businessLinks.length} total)`);
+      console.log(`🎯 Starting to scrape ${linksToProcess.length} businesses (found ${businessLinks.length} total)`);
       
       for (let i = 0; i < linksToProcess.length; i++) {
         try {
@@ -215,7 +248,7 @@ export class GoogleMapsScraper {
               const scaledDelay = Math.min(baseDelay + Math.floor(i / 10) * 500, 5000);
               const delay = scaledDelay + Math.random() * maxExtraDelay;
               
-              console.log(`Waiting ${Math.round(delay)}ms before scraping business ${i + 1}/${linksToProcess.length}`);
+              console.log(`⏳ Waiting ${Math.round(delay)}ms before scraping business ${i + 1}/${linksToProcess.length}`);
               await new Promise(resolve => setTimeout(resolve, delay));
             }
             
@@ -240,7 +273,7 @@ export class GoogleMapsScraper {
           });
 
         } catch (error) {
-          console.error(`Error scraping business ${i + 1}:`, error);
+          console.error(`❌ Error scraping business ${i + 1}:`, error);
           // Continue with next business instead of failing completely
         }
         
@@ -263,7 +296,7 @@ export class GoogleMapsScraper {
 
       return businesses;
     } catch (error) {
-      console.error('Scraping error:', error);
+      console.error('❌ Scraping error:', error);
       this.updateProgress({
         status: 'error',
         currentStep: 'Scraping failed',
@@ -294,7 +327,7 @@ export class GoogleMapsScraper {
         container.scrollTo(0, container.scrollHeight);
       }, scrollContainer);
 
-      await this.page.waitForTimeout(2000);
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       currentHeight = await this.page.evaluate((container) => {
         return container.scrollHeight;
@@ -304,7 +337,7 @@ export class GoogleMapsScraper {
 
   private async scrapeBusinessDetails(url: string, currentBusinessIndex: number = 0, totalBusinesses: number = 0): Promise<BusinessData | null> {
     if (!this.page || !this.browser) {
-      console.error('Browser or page not available');
+      console.error('❌ Browser or page not available');
       return null;
     }
 
@@ -313,7 +346,7 @@ export class GoogleMapsScraper {
       try {
         // Check if browser is still connected
         if (!this.browser.connected) {
-          console.error('Browser disconnected, reinitializing...');
+          console.error('❌ Browser disconnected, reinitializing...');
           await this.initialize();
           if (!this.page) return null;
         }
@@ -327,7 +360,7 @@ export class GoogleMapsScraper {
         });
         
         // Wait for page to be ready - increased wait time
-        await this.page.waitForTimeout(3000);
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
         // Check for common Google Maps error pages
         const pageTitle = await this.page.title().catch(() => '');
@@ -571,7 +604,7 @@ export class GoogleMapsScraper {
           try {
             await this.initialize();
           } catch (initError) {
-            console.error('Failed to reinitialize browser:', initError);
+            console.error('❌ Failed to reinitialize browser:', initError);
             return null;
           }
         }
@@ -626,21 +659,21 @@ export class GoogleMapsScraper {
     try {
       if (this.page) {
         await this.page.close().catch((error) => {
-          console.warn('Error closing page:', error.message);
+          console.warn('⚠️ Error closing page:', error.message);
         });
         this.page = null;
       }
       
       if (this.browser) {
         await this.browser.close().catch((error) => {
-          console.warn('Error closing browser:', error.message);
+          console.warn('⚠️ Error closing browser:', error.message);
         });
         this.browser = null;
       }
       
-      console.log('Browser cleanup completed');
+      console.log('✅ Browser cleanup completed');
     } catch (error) {
-      console.error('Error during browser cleanup:', error);
+      console.error('❌ Error during browser cleanup:', error);
       // Force cleanup
       this.page = null;
       this.browser = null;
