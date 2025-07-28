@@ -1,4 +1,4 @@
-import puppeteer, { Browser, Page } from 'puppeteer';
+import puppeteer, { Browser, Page } from 'puppeteer-core';
 // @ts-ignore - @sparticuz/chromium doesn't have TypeScript definitions
 import chromium from '@sparticuz/chromium';
 import { BusinessData, SearchParams, ScrapingProgress } from '@/types';
@@ -21,86 +21,80 @@ export class GoogleMapsScraper {
         this.page = null;
       }
 
-      // Configure for serverless environment (Vercel)
       const isProduction = process.env.NODE_ENV === 'production';
       const isDev = process.env.NODE_ENV === 'development';
       
       console.log(`🚀 Initializing browser for ${isProduction ? 'production' : 'development'} environment`);
 
-      let browserConfig: any = {
-        headless: 'new',
-        timeout: 30000,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--disable-gpu',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-extensions',
-          '--disable-plugins',
-          '--disable-images',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-ipc-flooding-protection',
-          '--window-size=1920x1080',
-          '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
-        ]
-      };
+      let browserOptions: any;
 
       if (isProduction) {
-        // Production configuration for Vercel
-        try {
-          browserConfig.executablePath = await chromium.executablePath();
-          browserConfig.args = [
-            ...browserConfig.args,
+        // Vercel production configuration
+        console.log('🔧 Setting up Chromium for Vercel...');
+        
+        browserOptions = {
+          executablePath: await chromium.executablePath(),
+          headless: chromium.headless,
+          ignoreHTTPSErrors: true,
+          defaultViewport: chromium.defaultViewport,
+          args: [
             ...chromium.args,
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-zygote',
             '--single-process',
-            '--no-zygote'
-          ];
-          console.log('✅ Using @sparticuz/chromium for production');
-        } catch (chromiumError) {
-          console.error('❌ Failed to get Chromium executable path:', chromiumError);
-          console.log('🔄 Attempting fallback configuration...');
-          
-          // Remove executablePath to let Puppeteer find Chrome
-          delete browserConfig.executablePath;
-          
-          // Add additional args for serverless environment
-          browserConfig.args = [
-            ...browserConfig.args,
-            '--disable-web-security',
-            '--disable-features=VizDisplayCompositor',
-            '--run-all-compositor-stages-before-draw',
+            '--disable-extensions',
+            '--disable-background-networking',
             '--disable-background-timer-throttling',
             '--disable-renderer-backgrounding',
             '--disable-backgrounding-occluded-windows',
-            '--disable-background-networking',
+            '--disable-web-security',
+            '--disable-features=TranslateUI',
+            '--disable-features=BlinkGenPropertyTrees',
+            '--disable-ipc-flooding-protection',
+            '--window-size=1920,1080'
+          ]
+        };
+        
+        console.log('✅ Chromium configured for production');
+        
+        // Launch browser with configuration
+        this.browser = await puppeteer.launch(browserOptions);
+      } else {
+        // Development configuration - use puppeteer (not puppeteer-core)
+        const puppeteerDev = require('puppeteer');
+        this.browser = await puppeteerDev.launch({
+          headless: 'new',
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
-            '--single-process',
-            '--no-zygote',
-            '--memory-pressure-off'
-          ];
-        }
-      } else if (isDev) {
-        // Development configuration - use local Chrome
+            '--window-size=1920,1080'
+          ]
+        });
+        
         console.log('✅ Using local Chrome for development');
       }
 
-      this.browser = await puppeteer.launch(browserConfig);
+      // Create new page (common for both environments)
+      if (!this.browser) {
+        throw new Error('Browser failed to initialize');
+      }
       
       this.page = await this.browser.newPage();
       
-      // Wait for page to be ready
+      // Configure page
       await this.page.setViewport({ width: 1920, height: 1080 });
       await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
       
-      // Set additional page configurations
+      // Set timeouts
       await this.page.setDefaultNavigationTimeout(30000);
       await this.page.setDefaultTimeout(30000);
       
-      // Test that the page is working
+      // Test page readiness
       await this.page.evaluate(() => document.readyState);
       
       console.log('✅ Browser initialized successfully');
