@@ -51,14 +51,38 @@ export class GoogleMapsScraper {
 
       if (isProduction) {
         // Production configuration for Vercel
-        browserConfig.executablePath = await chromium.executablePath();
-        browserConfig.args = [
-          ...browserConfig.args,
-          ...chromium.args,
-          '--single-process',
-          '--no-zygote'
-        ];
-        console.log('✅ Using @sparticuz/chromium for production');
+        try {
+          browserConfig.executablePath = await chromium.executablePath();
+          browserConfig.args = [
+            ...browserConfig.args,
+            ...chromium.args,
+            '--single-process',
+            '--no-zygote'
+          ];
+          console.log('✅ Using @sparticuz/chromium for production');
+        } catch (chromiumError) {
+          console.error('❌ Failed to get Chromium executable path:', chromiumError);
+          console.log('🔄 Attempting fallback configuration...');
+          
+          // Remove executablePath to let Puppeteer find Chrome
+          delete browserConfig.executablePath;
+          
+          // Add additional args for serverless environment
+          browserConfig.args = [
+            ...browserConfig.args,
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
+            '--run-all-compositor-stages-before-draw',
+            '--disable-background-timer-throttling',
+            '--disable-renderer-backgrounding',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-background-networking',
+            '--disable-dev-shm-usage',
+            '--single-process',
+            '--no-zygote',
+            '--memory-pressure-off'
+          ];
+        }
       } else if (isDev) {
         // Development configuration - use local Chrome
         console.log('✅ Using local Chrome for development');
