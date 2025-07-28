@@ -1,31 +1,10 @@
 {
   "version": 2,
-  "name": "map-data-miner",
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "installCommand": "npm install",
   "devCommand": "npm run dev",
-  "env": {
-    "NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN": "@mapbox_access_token",
-    "GOOGLE_MAPS_API_KEY": "@google_maps_api_key",
-    "GOOGLE_SHEETS_API_KEY": "@google_sheets_api_key",
-    "GOOGLE_CLIENT_EMAIL": "@google_client_email",
-    "GOOGLE_PRIVATE_KEY": "@google_private_key",
-    "GOOGLE_PROJECT_ID": "@google_project_id",
-    "API_SECRET_KEY": "@api_secret_key"
-  },
-  "build": {
-    "env": {
-      "NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN": "@mapbox_access_token",
-      "GOOGLE_MAPS_API_KEY": "@google_maps_api_key",
-      "GOOGLE_SHEETS_API_KEY": "@google_sheets_api_key",
-      "GOOGLE_CLIENT_EMAIL": "@google_client_email",
-      "GOOGLE_PRIVATE_KEY": "@google_private_key",
-      "GOOGLE_PROJECT_ID": "@google_project_id",
-      "API_SECRET_KEY": "@api_secret_key"
-    }
-  },
   "functions": {
     "app/api/scrape/route.ts": {
       "maxDuration": 300
