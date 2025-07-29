@@ -56,6 +56,12 @@ const nextConfig = {
   },
   // Enable experimental features for better performance
   experimental: {
+    // Mark Puppeteer packages as external for serverless deployment
+    serverComponentsExternalPackages: [
+      'puppeteer-core',
+      'puppeteer',
+      '@sparticuz/chromium'
+    ],
     optimizePackageImports: ['lucide-react', 'framer-motion'],
   },
   // Improve build performance
