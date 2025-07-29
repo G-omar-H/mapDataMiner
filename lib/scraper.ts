@@ -1,6 +1,6 @@
 import puppeteer, { Browser, Page } from 'puppeteer-core';
-// @ts-ignore - @sparticuz/chromium-min doesn't have TypeScript definitions
-import chromium from '@sparticuz/chromium-min';
+// @ts-ignore - @sparticuz/chromium doesn't have TypeScript definitions
+import chromium from '@sparticuz/chromium';
 import { BusinessData, SearchParams, ScrapingProgress } from '@/types';
 
 export class GoogleMapsScraper {
@@ -21,30 +21,25 @@ export class GoogleMapsScraper {
         this.page = null;
       }
 
-      const isProduction = process.env.NODE_ENV === 'production';
-      const isDev = process.env.NODE_ENV === 'development';
+      const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
       
       console.log(`🚀 Initializing browser for ${isProduction ? 'production' : 'development'} environment`);
 
-      let browserOptions: any;
-
       if (isProduction) {
-        // Vercel production configuration using remote Chromium
-        console.log('🔧 Setting up Chromium-min for Vercel...');
+        // Vercel production configuration using @sparticuz/chromium
+        console.log('🔧 Setting up Chromium for Vercel...');
         
-        // Use remote Chromium binary (hosted version)
-        const remoteExecutablePath = 'https://github.com/Sparticuz/chromium/releases/download/v119.0.2/chromium-v119.0.2-pack.tar';
+        const executablePath = await chromium.executablePath();
         
-        browserOptions = {
+        this.browser = await puppeteer.launch({
           args: chromium.args,
-          executablePath: await chromium.executablePath(remoteExecutablePath),
-          headless: true,
+          defaultViewport: chromium.defaultViewport,
+          executablePath,
+          headless: chromium.headless,
           ignoreHTTPSErrors: true,
-          defaultViewport: null,
-          timeout: 30000,
-        };
+        });
         
-        console.log('✅ Chromium-min configured for production with remote executable');
+        console.log('✅ Chromium configured for production');
       } else {
         // Development configuration - use puppeteer (not puppeteer-core)
         const puppeteerDev = require('puppeteer');
@@ -60,12 +55,7 @@ export class GoogleMapsScraper {
         console.log('✅ Using local Chrome for development');
       }
 
-      // Launch browser with configuration (production only)
-      if (!this.browser) {
-        this.browser = await puppeteer.launch(browserOptions);
-      }
-
-      // Create new page (common for both environments)
+      // Create new page
       if (!this.browser) {
         throw new Error('Browser failed to initialize');
       }
@@ -74,7 +64,7 @@ export class GoogleMapsScraper {
 
       // Configure page
       await this.page.setViewport({ width: 1920, height: 1080 });
-      await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
+      await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36');
 
       // Set timeouts
       await this.page.setDefaultNavigationTimeout(30000);
