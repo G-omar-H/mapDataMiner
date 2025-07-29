@@ -60,7 +60,7 @@ const nextConfig = {
     serverComponentsExternalPackages: [
       'puppeteer-core',
       'puppeteer',
-      '@sparticuz/chromium'
+      '@sparticuz/chromium-min'
     ],
     optimizePackageImports: ['lucide-react', 'framer-motion'],
   },

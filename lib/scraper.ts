@@ -1,6 +1,6 @@
 import puppeteer, { Browser, Page } from 'puppeteer-core';
-// @ts-ignore - @sparticuz/chromium doesn't have TypeScript definitions
-import chromium from '@sparticuz/chromium';
+// @ts-ignore - @sparticuz/chromium-min doesn't have TypeScript definitions
+import chromium from '@sparticuz/chromium-min';
 import { BusinessData, SearchParams, ScrapingProgress } from '@/types';
 
 export class GoogleMapsScraper {
@@ -29,40 +29,22 @@ export class GoogleMapsScraper {
       let browserOptions: any;
 
       if (isProduction) {
-        // Vercel production configuration
-        console.log('🔧 Setting up Chromium for Vercel...');
+        // Vercel production configuration using remote Chromium
+        console.log('🔧 Setting up Chromium-min for Vercel...');
+        
+        // Use remote Chromium binary (hosted version)
+        const remoteExecutablePath = 'https://github.com/Sparticuz/chromium/releases/download/v119.0.2/chromium-v119.0.2-pack.tar';
         
         browserOptions = {
-          executablePath: await chromium.executablePath(),
-          headless: chromium.headless,
+          args: chromium.args,
+          executablePath: await chromium.executablePath(remoteExecutablePath),
+          headless: true,
           ignoreHTTPSErrors: true,
-          defaultViewport: chromium.defaultViewport,
-          args: [
-            ...chromium.args,
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-            '--disable-extensions',
-            '--disable-background-networking',
-            '--disable-background-timer-throttling',
-            '--disable-renderer-backgrounding',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-web-security',
-            '--disable-features=TranslateUI',
-            '--disable-features=BlinkGenPropertyTrees',
-            '--disable-ipc-flooding-protection',
-            '--window-size=1920,1080'
-          ]
+          defaultViewport: null,
+          timeout: 30000,
         };
         
-        console.log('✅ Chromium configured for production');
-        
-        // Launch browser with configuration
-        this.browser = await puppeteer.launch(browserOptions);
+        console.log('✅ Chromium-min configured for production with remote executable');
       } else {
         // Development configuration - use puppeteer (not puppeteer-core)
         const puppeteerDev = require('puppeteer');
@@ -75,28 +57,32 @@ export class GoogleMapsScraper {
             '--window-size=1920,1080'
           ]
         });
-        
         console.log('✅ Using local Chrome for development');
+      }
+
+      // Launch browser with configuration (production only)
+      if (!this.browser) {
+        this.browser = await puppeteer.launch(browserOptions);
       }
 
       // Create new page (common for both environments)
       if (!this.browser) {
         throw new Error('Browser failed to initialize');
       }
-      
+
       this.page = await this.browser.newPage();
-      
+
       // Configure page
       await this.page.setViewport({ width: 1920, height: 1080 });
-      await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
-      
+      await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
+
       // Set timeouts
       await this.page.setDefaultNavigationTimeout(30000);
       await this.page.setDefaultTimeout(30000);
-      
+
       // Test page readiness
       await this.page.evaluate(() => document.readyState);
-      
+
       console.log('✅ Browser initialized successfully');
     } catch (error) {
       console.error('❌ Failed to initialize browser:', error);
