@@ -1,58 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleMapsScraper } from '@/lib/scraper';
+import { SearchParams } from '@/types';
+import { setGlobalScraperInstance, clearGlobalScraperInstance } from '@/lib/scraper-manager';
 import { validateSearchParams } from '@/utils/validation';
 
-// Validate environment configuration
+// Validate environment variables
 function validateEnvironment() {
-  const errors: string[] = [];
-  const warnings: string[] = [];
+  const requiredVars = {
+    GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY,
+    NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN: process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN,
+  };
 
-  // Check critical environment variables
-  if (!process.env.NODE_ENV) {
-    errors.push('NODE_ENV is not configured');
-  }
+  const missing = Object.entries(requiredVars)
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
 
-  // Check if real scraping is enabled but required dependencies are missing
-  const realScrapingEnabled = process.env.ENABLE_REAL_SCRAPING === 'true';
+  const warnings = [];
   
-  if (realScrapingEnabled) {
-    // For real scraping, we need these for optimal experience but not strictly required
-    if (!process.env.GOOGLE_MAPS_API_KEY) {
-      warnings.push('GOOGLE_MAPS_API_KEY is not configured - scraping may be less reliable');
-    }
-    
-    if (!process.env.SCRAPING_DELAY_MIN || !process.env.SCRAPING_DELAY_MAX) {
-      warnings.push('Scraping delay configuration missing - using default values');
-    }
+  // Add warnings for optional but recommended variables
+  if (!process.env.GOOGLE_SHEETS_API_KEY) {
+    warnings.push('GOOGLE_SHEETS_API_KEY not set - Google Sheets export will be disabled');
   }
 
-  // Check Mapbox for map visualization
-  if (!process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN) {
-    warnings.push('NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN is not configured - map visualization will be limited');
-  }
-
-  // Check Google Sheets API for export functionality
-  const sheetsEnabled = process.env.ENABLE_GOOGLE_SHEETS_EXPORT === 'true';
-  if (sheetsEnabled) {
-    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
-      errors.push('Google Sheets export is enabled but credentials are missing. Please configure GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY');
-    }
-  }
-
-  return { errors, warnings };
+  return { errors: missing, warnings };
 }
 
 export async function POST(request: NextRequest) {
   try {
     // Validate environment first
-    const { errors: envErrors, warnings: envWarnings } = validateEnvironment();
+    const missingVars = validateEnvironment();
     
-    if (envErrors.length > 0) {
+    if (missingVars.errors.length > 0) {
       return NextResponse.json(
         { 
           error: 'Configuration Error',
           message: 'Application is not properly configured',
-          details: envErrors,
+          details: missingVars.errors,
           fix: 'Please check your .env.local file and ensure all required environment variables are set. See API_SETUP_GUIDE.md for detailed instructions.'
         },
         { status: 500 }
@@ -78,7 +61,7 @@ export async function POST(request: NextRequest) {
     // Validate search parameters
     const validation = validateSearchParams(body);
     if (!validation.success) {
-      const errorDetails = validation.error.issues.map(issue => 
+      const errorDetails = validation.error.issues.map((issue: any) => 
         `${issue.path.join('.')}: ${issue.message}`
       );
       
@@ -140,7 +123,7 @@ export async function POST(request: NextRequest) {
                 businesses,
                 count: businesses.length,
                 searchParams: params,
-                warnings: envWarnings.length > 0 ? envWarnings : undefined
+                warnings: missingVars.warnings.length > 0 ? missingVars.warnings : undefined
               })}\n\n`;
               controller.enqueue(encoder.encode(finalData));
               controller.close();
@@ -173,9 +156,16 @@ export async function POST(request: NextRequest) {
     // Existing non-streaming implementation for backward compatibility
     // Validate scraping parameters
     const maxBusinesses = parseInt(process.env.MAX_BUSINESSES_PER_SEARCH || '100');
-    const scrapingTimeout = parseInt(process.env.SCRAPING_TIMEOUT || '60000');
+    const baseTimeout = parseInt(process.env.SCRAPING_TIMEOUT || '600000'); // 10 minutes base timeout
     const minDelay = parseInt(process.env.SCRAPING_DELAY_MIN || '1000');
     const maxDelay = parseInt(process.env.SCRAPING_DELAY_MAX || '3000');
+
+    // Calculate intelligent timeout based on number of businesses to scrape
+    const businessesToScrape = Math.min(params.maxResults || 30, maxBusinesses);
+    const estimatedTimePerBusiness = 15000; // 15 seconds per business (including delays)
+    const intelligentTimeout = Math.max(baseTimeout, businessesToScrape * estimatedTimePerBusiness);
+    
+    console.log(`⏱️ Calculated timeout: ${intelligentTimeout}ms (${Math.round(intelligentTimeout/1000/60)} minutes) for ${businessesToScrape} businesses`);
 
     if (minDelay >= maxDelay) {
       return NextResponse.json(
@@ -205,7 +195,7 @@ export async function POST(request: NextRequest) {
       // Perform scraping with timeout and result limit
       const scrapingPromise = scraper.scrapeBusinesses(params);
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Scraping operation timed out')), scrapingTimeout)
+        setTimeout(() => reject(new Error('Scraping operation timed out')), intelligentTimeout)
       );
       
       const allBusinesses = await Promise.race([scrapingPromise, timeoutPromise]) as any[];
@@ -242,7 +232,7 @@ export async function POST(request: NextRequest) {
         count: businesses.length,
         searchParams: params,
         timestamp: new Date().toISOString(),
-        warnings: envWarnings.length > 0 ? envWarnings : undefined
+        warnings: missingVars.warnings.length > 0 ? missingVars.warnings : undefined
       });
       
     } catch (scrapingError: any) {
@@ -272,7 +262,7 @@ export async function POST(request: NextRequest) {
           { 
             error: 'Scraping Timeout',
             message: 'The scraping operation took too long and was cancelled',
-            details: [`Operation timed out after ${scrapingTimeout / 1000} seconds`],
+            details: [`Operation timed out after ${intelligentTimeout / 1000} seconds`],
             fix: 'Google Maps may be slow or blocking automated access. Try again later with a smaller search area.',
             suggestions: [
               'Reduce the search radius',

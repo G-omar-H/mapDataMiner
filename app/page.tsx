@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, Search, Download, Filter, Database, Globe, Phone, Star, Building, Clock, Settings, FileSpreadsheet, Map } from 'lucide-react';
+import { MapPin, Search, Download, Filter, Database, Globe, Phone, Star, Building, Clock, Settings, FileSpreadsheet, Map, Pause, Play, X } from 'lucide-react';
 import { BusinessData, SearchParams, ScrapingProgress, FilterOptions } from '@/types';
 import { SSEScrapingClient } from '@/lib/sse-client';
 import SearchForm from '@/components/SearchForm';
@@ -16,6 +16,8 @@ import ConfigurationCheck from '@/components/ConfigurationCheck';
 import toast from 'react-hot-toast';
 
 export default function HomePage() {
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchProgress, setSearchProgress] = useState<ScrapingProgress | null>(null);
   const [businesses, setBusinesses] = useState<BusinessData[]>([]);
   const [filteredBusinesses, setFilteredBusinesses] = useState<BusinessData[]>([]);
   const [progress, setProgress] = useState<ScrapingProgress>({
@@ -26,19 +28,83 @@ export default function HomePage() {
     scraped: 0,
     errors: []
   });
+  const [scrapingState, setScrapingState] = useState<'idle' | 'running' | 'paused' | 'cancelled'>('idle');
+  const [showConfigCheck, setShowConfigCheck] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showFilterSidebar, setShowFilterSidebar] = useState(false);
-  const [showConfigCheck, setShowConfigCheck] = useState(false);
   const [currentView, setCurrentView] = useState<'table' | 'map'>('table');
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
   
   // Keep reference to SSE client for cleanup
   const sseClientRef = useRef<SSEScrapingClient | null>(null);
 
+  // Control functions for pause/resume/cancel
+  const handlePause = async () => {
+    try {
+      const response = await fetch('/api/scrape/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'pause' })
+      });
+      
+      const result = await response.json();
+      if (response.ok) {
+        setScrapingState('paused');
+        toast.success('Scraping paused');
+      } else {
+        toast.error(result.error || 'Failed to pause scraping');
+      }
+    } catch (error) {
+      toast.error('Failed to pause scraping');
+    }
+  };
+
+  const handleResume = async () => {
+    try {
+      const response = await fetch('/api/scrape/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resume' })
+      });
+      
+      const result = await response.json();
+      if (response.ok) {
+        setScrapingState('running');
+        toast.success('Scraping resumed');
+      } else {
+        toast.error(result.error || 'Failed to resume scraping');
+      }
+    } catch (error) {
+      toast.error('Failed to resume scraping');
+    }
+  };
+
+  const handleCancel = async () => {
+    try {
+      const response = await fetch('/api/scrape/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel' })
+      });
+      
+      const result = await response.json();
+      if (response.ok) {
+        setScrapingState('cancelled');
+        setIsSearching(false);
+        toast.success('Scraping cancelled');
+      } else {
+        toast.error(result.error || 'Failed to cancel scraping');
+      }
+    } catch (error) {
+      toast.error('Failed to cancel scraping');
+    }
+  };
+
   const handleSearch = useCallback(async (params: SearchParams) => {
+    // Update search params for map view
     setSearchParams(params);
+    setScrapingState('running');
     
-    // Initialize progress
     setProgress({
       status: 'searching',
       currentStep: 'Initializing search...',
@@ -48,101 +114,73 @@ export default function HomePage() {
       errors: []
     });
 
-    // Cancel any existing search
+    // Clean up any existing SSE connection
     if (sseClientRef.current) {
       sseClientRef.current.abort();
     }
 
-    // Create new SSE client
-    sseClientRef.current = new SSEScrapingClient();
+    // Create new SSE client for this search
+    const sseClient = new SSEScrapingClient();
+    sseClientRef.current = sseClient;
 
-    // Start scraping with real-time updates
-    await sseClientRef.current.startScraping(
-      params,
-      // onProgress callback
-      (progressUpdate: ScrapingProgress) => {
-        setProgress(progressUpdate);
-      },
-      // onComplete callback
-      (businesses: BusinessData[], warnings?: string[]) => {
-        setBusinesses(businesses);
-        setFilteredBusinesses(businesses);
-        
-        // Show warnings if any
-        if (warnings && warnings.length > 0) {
-          toast(
-            `Search completed with warnings:\n${warnings.join('\n')}\n\n💡 Check your API configuration for optimal performance`,
-            { 
-              duration: 8000,
-              icon: '⚠️',
-              style: {
-                background: '#fffbeb',
-                color: '#d97706',
-                border: '1px solid #fde68a'
-              }
-            }
-          );
+    try {
+      await sseClient.startScraping(
+        params, 
+        // onProgress callback
+        (progressUpdate) => {
+          setProgress(progressUpdate);
+          
+          // Sync scraping state with progress status
+          if (progressUpdate.status === 'scraping') {
+            setScrapingState('running');
+          } else if (progressUpdate.status === 'paused') {
+            setScrapingState('paused');
+          } else if (progressUpdate.status === 'cancelled') {
+            setScrapingState('cancelled');
+          } else if (progressUpdate.status === 'completed') {
+            setScrapingState('idle');
+          } else if (progressUpdate.status === 'error') {
+            setScrapingState('idle');
+          }
+        }, 
+        // onComplete callback
+        (businessesData, warnings) => {
+          setBusinesses(businessesData);
+          setFilteredBusinesses(businessesData);
+          setScrapingState('idle');
+          
+          if (warnings && warnings.length > 0) {
+            toast(`Search completed with warnings: ${warnings.join(', ')}`, { duration: 6000 });
+          } else {
+            toast.success(`Found ${businessesData.length} businesses!`);
+          }
+        },
+        // onError callback
+        (error, message) => {
+          console.error('Search failed:', error, message);
+          setScrapingState('idle');
+          setProgress(prev => ({
+            ...prev,
+            status: 'error',
+            currentStep: 'Search failed',
+            errors: [message]
+          }));
+          
+          toast.error(`Search failed: ${message}`);
         }
-
-        // Show success message
-        if (businesses.length > 0) {
-          toast.success(`Found ${businesses.length} businesses! 🎉`, { duration: 4000 });
-        }
-
-        // Set final progress
-        setProgress({
-          status: 'completed',
-          currentStep: `Found ${businesses.length} businesses`,
-          progress: 100,
-          totalFound: businesses.length,
-          scraped: businesses.length,
-          errors: []
-        });
-      },
-      // onError callback
-      (error: string, message: string) => {
-        // Map common errors to user-friendly messages
-        let userMessage = error;
-        let userFix = 'Please try again later';
-
-        if (error.includes('Configuration Error')) {
-          userMessage = 'Configuration error occurred';
-          userFix = 'Please check your environment configuration';
-        } else if (error.includes('Invalid Search Parameters')) {
-          userMessage = 'Invalid search parameters';
-          userFix = 'Please check your location and search criteria';
-        } else if (error.includes('No Results Found')) {
-          userMessage = 'No businesses found';
-          userFix = 'Try expanding your search area or using different keywords';
-        } else if (error.includes('Scraping Timeout')) {
-          userMessage = 'Search timed out';
-          userFix = 'Try reducing the search area or try again later';
-        } else if (error.includes('Access Blocked')) {
-          userMessage = 'Access temporarily blocked';
-          userFix = 'Wait a few minutes before searching again';
-        } else if (error.includes('Scraping Not Enabled')) {
-          userMessage = 'Scraping not enabled';
-          userFix = 'Enable real scraping in your configuration';
-        } else if (error.includes('Network Error')) {
-          userMessage = 'Connection failed';
-          userFix = 'Check your internet connection and try again';
-        }
-
-        // Show error toast
-        const fullMessage = `${userMessage}: ${message}`;
-        toast.error(`${fullMessage}\n\n💡 ${userFix}`, { duration: 8000 });
-
-        // Set error progress
-        setProgress({
-          status: 'error',
-          currentStep: userMessage,
-          progress: 0,
-          totalFound: 0,
-          scraped: 0,
-          errors: [message]
-        });
-      }
-    );
+      );
+    } catch (error) {
+      console.error('Search failed:', error);
+      setScrapingState('idle');
+      setProgress(prev => ({
+        ...prev,
+        status: 'error',
+        currentStep: 'Search failed',
+        errors: [(error as Error).message]
+      }));
+      
+      toast.error('Search failed. Please try again.');
+    }
   }, []);
 
   const handleFilter = useCallback((filters: FilterOptions) => {
@@ -272,7 +310,7 @@ export default function HomePage() {
 
         {/* Progress Indicator */}
         <AnimatePresence>
-          {(progress.status === 'searching' || progress.status === 'scraping') && (
+          {(progress.status === 'searching' || progress.status === 'scraping' || progress.status === 'paused') && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
@@ -280,6 +318,43 @@ export default function HomePage() {
               className="mb-8"
             >
               <ProgressIndicator progress={progress} />
+              
+              {/* Scraping Control Buttons */}
+              {(progress.status === 'scraping' || progress.status === 'paused') && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-4 flex justify-center gap-3"
+                >
+                  {progress.status === 'scraping' && (
+                    <button
+                      onClick={handlePause}
+                      className="flex items-center px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors duration-200"
+                    >
+                      <Pause className="h-4 w-4 mr-2" />
+                      Pause
+                    </button>
+                  )}
+                  
+                  {progress.status === 'paused' && (
+                    <button
+                      onClick={handleResume}
+                      className="flex items-center px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors duration-200"
+                    >
+                      <Play className="h-4 w-4 mr-2" />
+                      Resume
+                    </button>
+                  )}
+                  
+                  <button
+                    onClick={handleCancel}
+                    className="flex items-center px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors duration-200"
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Cancel
+                  </button>
+                </motion.div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

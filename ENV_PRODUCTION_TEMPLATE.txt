@@ -27,18 +27,27 @@ NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=pk.your_mapbox_access_token_here
 # ==============================================
 # ⚙️ PRODUCTION-OPTIMIZED SETTINGS
 # ==============================================
+# ==============================================
+# ⚡ ULTRA-FAST SCRAPING CONFIGURATION
+# ==============================================
 DEFAULT_SEARCH_RADIUS=5000
-MAX_BUSINESSES_PER_SEARCH=100
+MAX_BUSINESSES_PER_SEARCH=500
 
 # Feature flags (production settings)
 ENABLE_REAL_SCRAPING=true
 DEBUG_MODE=false
 
-# Anti-detection scraping (optimized for production)
-SCRAPING_DELAY_MIN=2000
-SCRAPING_DELAY_MAX=4000
-MAX_CONCURRENT_SCRAPERS=2
-SCRAPING_TIMEOUT=300000
+# ⚡ ULTRA-FAST SCRAPING SETTINGS
+SCRAPING_DELAY_MIN=300
+SCRAPING_DELAY_MAX=800
+MAX_CONCURRENT_SCRAPERS=8
+SCRAPING_TIMEOUT=900000
+
+# Conservative scraping mode (prevents ProtocolError)
+CONSERVATIVE_SCRAPING=true
+
+# Browser health management
+BROWSER_HEALTH_CHECK_INTERVAL=60000
 
 # Security
 API_SECRET_KEY=your_random_secret_key_minimum_32_characters

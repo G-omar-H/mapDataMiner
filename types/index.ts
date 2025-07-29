@@ -29,7 +29,7 @@ export interface SearchParams {
 }
 
 export interface ScrapingProgress {
-  status: 'idle' | 'searching' | 'scraping' | 'completed' | 'error';
+  status: 'idle' | 'searching' | 'scraping' | 'paused' | 'cancelled' | 'completed' | 'error';
   currentStep: string;
   progress: number;
   totalFound: number;
